@@ -124,6 +124,7 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
+transfer_model.h5
+yolov5m.pt
 # Pyre type checker
 .pyre/
