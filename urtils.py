@@ -63,6 +63,17 @@ def xywh2xyxy(xywh):
         return np.array([x, y, xr, yb]).astype('int')
 
 def draw_tracks(image, tracks,ids):
+    """it wil take tracks and convert them into xmin,ymin, xmax,ymax
+
+    Args:
+        image ([array]): image
+        tracks ([track]): tracks with xmin,ymin,width,height
+        ids ([dic]): tracks with xmin,ymin, xmax,ymax
+
+    Returns:
+        image: image
+        id : tracks
+    """
     for trk in tracks:
 
         trk_id = trk[1]
@@ -110,6 +121,15 @@ def draw_rec(frame,track_id):
     return frame
 
 def distance_list(feature,feat1):
+    """compute dictance between two images if distance is closer to 1 that mean image is same 
+
+    Args:
+        feature ([type]): [description]
+        feat1 ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
     x = torch.tensor(feature[0]).unsqueeze(0)
     dis=[]
     for i in feat1:
@@ -120,6 +140,15 @@ def distance_list(feature,feat1):
     return sum(dis)/len(dis)
 
 def ids_feature_list(ids,frame):
+    """this function take tracks and then caculate feature list for all tracks which use for reid.
+
+    Args:
+        ids ([dic]): tracks
+        frame ([array]): image
+
+    Returns:
+        ids_feat: new dic with value as feature and keys as id
+    """
     ids_feat={}
     for i,bbox in ids.items():
         img = frame[bbox[1]:bbox[3], bbox[0]:bbox[2]]
@@ -132,6 +161,17 @@ def ids_feature_list(ids,frame):
 
 
 def tracklets(max_key,feature,track_id,tracklets_id):
+    """this fuction managing tracklets
+
+    Args:
+        max_key ([int]): 
+        feature ([array]): [description]
+        track_id ([dic]): {id:image}
+        tracklets_id ([dic]): {id:int}
+
+    Returns:
+        [type]: [description]
+    """
     if max_key not in tracklets_id:
         tracklets_id[max_key]=0
     tracklets_id[max_key] = tracklets_id[max_key]+1
@@ -147,6 +187,18 @@ def tracklets(max_key,feature,track_id,tracklets_id):
                 
 
 def tracking(ids,frame,tracks_id,tracklets_id,tracks_draw):
+    """this function reid person
+
+    Args:
+        ids ([dic]): new tracks
+        frame ([array]): image
+        tracks_id ([dic]): history of all tracks
+        tracklets_id ([dic]): tracklets for all id
+        tracks_draw ([dic]): 
+
+    Returns:
+        trcaks_draw: [description]
+    """
     ids_feat = ids_feature_list(ids,frame)
 
     if len(tracks_id)==0:
@@ -184,6 +236,16 @@ def tracking(ids,frame,tracks_id,tracklets_id,tracks_draw):
 
 
 def postprocess_yolov5(x_shape, y_shape,results):
+    """this function postprocess detection and fillter only person
+
+    Args:
+        x_shape ([int]): image shape with x axis
+        y_shape ([int]): image shape with y axis
+        results ([array]): detection results
+
+    Returns:
+        boxes_person,scores_person,labels_person,boxes_bottel,scores_bottel,labels_bottel: fillter detection
+    """
     boxes_person = []
     labels_person = []
     scores_person = []
@@ -206,11 +268,11 @@ def postprocess_yolov5(x_shape, y_shape,results):
 
 def pointInRect(point,rect):
     x1, y1, x2, y2 = rect
-    x, y,_ = point
+    x, y = point
     if (x1 < x and x < x2):
         if (y1 < y and y < y2):
-            return "True"
-    return "False"
+            return 1
+    return 0
 
 def check_id(bottle,keypoint,tracks_draw):
       pick_id={}
@@ -250,13 +312,25 @@ def check_id_m(bottle,keypoints,tracks_draw):
 
 
 def id_assign(center_right,poses,output_transform,id,bottle_number):
+    """this fuction calculate distance between bottle and wrist point if distance is less than 150 that mean perosn pick up a bottle
+
+    Args:
+        center_right ([list]): x,y
+        poses ([array]): [description]
+        output_transform ([]): [description]
+        id ([type]): [description]
+        bottle_number ([type]): [description]
+
+    Returns:
+        [type]: [description]
+    """
+    
     
     for i,pose in enumerate(poses):
         #print()
         dis=[]
         points = pose[:,:2].astype(np.int32)
         points = output_transform.scale(points)
-        points_scores = pose[:,2]
         print("id:-",i)
         print("10:-",points[10])
         print("9:-",points[9])
@@ -270,5 +344,5 @@ def id_assign(center_right,poses,output_transform,id,bottle_number):
         dis.append(dis_9)
         min_key=dis.index(min(dis))
         if dis[min_key] < 150:
-            id[i]="pick"+str(bottle_number)
+            id[str(i)+str(bottle_number)]="pick"+str(bottle_number)
     return id

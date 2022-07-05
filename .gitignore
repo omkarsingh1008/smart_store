@@ -126,5 +126,22 @@ venv.bak/
 dmypy.json
 transfer_model.h5
 yolov5m.pt
+model_mob.onnx
+model.onnx
+model.tflite
+output_class.mp4
+output_direction.mp4
+output9.mp4
+pickup.mp4
+#dir
+converted_savedmodel
+crop_image
+dataset
+my
+my_16
+mymodel_vgg1
+openvino_models
+
+
 # Pyre type checker
 .pyre/

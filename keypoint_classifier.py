@@ -1,169 +1,33 @@
 from cmath import cos
-import logging
-import sys
-from argparse import ArgumentParser, SUPPRESS
-from pathlib import Path
-from time import perf_counter
-import cv2
-import mediapipe as mp
-import torch
 import cv2
 import numpy as np
-import argparse
-from motrackers import CentroidTracker
-from reid import ids_feature_,distance_,distance_list,ids_feature_list
 import time
-import cv2
-import numpy as np
 from openvino.inference_engine import IECore
-import torch
 from math import atan
 import openvino_models as models
-import monitors
-from images_capture import open_images_capture
-from pipelines import get_user_config, AsyncPipeline
-from performance_metrics import PerformanceMetrics
-from helpers import resolution
-from urtils import load,id_assign
 from datetime import datetime
-import math
 from shapely.geometry import Polygon
 from shapely.geometry import LineString
+import tensorflow as tf
 from tensorflow.keras.models import load_model
-default_skeleton = ((15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
-    (5, 7), (6, 8), (7, 9), (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 6))
+import sys
+from classifier_urtils import draw,preprocess_tensorflow,classifier_tensorflow,preprocess,classifier
+import torch
+from urtils import postprocess_yolov5,draw_tracks,tracking,check_id
+from motrackers import CentroidTracker
 
-colors = (
-        (255, 0, 0), (255, 0, 255), (170, 0, 255), (255, 0, 85),
-        (255, 0, 170), (85, 255, 0), (255, 170, 0), (0, 255, 0),
-        (255, 255, 0), (0, 255, 85), (170, 255, 0), (0, 85, 255),
-        (0, 255, 170), (0, 0, 255), (0, 255, 255), (85, 0, 255),
-        (0, 170, 255))
-
-def findAngle(M1, M2):
-    PI = 3.14159265
-     
-    # Store the tan value  of the angle
-    angle = abs((M2 - M1) / (1 + M1 * M2))
- 
-    # Calculate tan inverse of the angle
-    ret = atan(angle)
- 
-    # Convert the angle from
-    # radian to degree
-    val = (ret * 180) / PI
- 
-    # Print the result
-    return (round(val, 4))
-def slope(point1,point2):
-    x = (point1[0],point2[0])
-    y = (point1[1],point2[1])
-    slope_, intercept = np.polyfit(x,y,1)
-    return slope_
-
-def getrect(actual_line):
-    cd_length = 200
-    ab = LineString([actual_line[1],actual_line[0]])
-    left = ab.parallel_offset(cd_length / 2, 'left')
-    right = ab.parallel_offset(cd_length / 2, 'right')
-    c = left.boundary[1]
-    d = right.boundary[0]  # note the different orientation for right offset
-    cd = LineString([c, d])
-    ef = LineString([(int(c.x),int(c.y)), (int(d.x),int(d.y))])
-    left = ef.parallel_offset(200 , 'left')
-    right = ef.parallel_offset(100 , 'right')
-    e = left.boundary[1]
-    f = right.boundary[0]
-    pol = Polygon([(int(c.x),int(c.y)), (int(d.x),int(d.y)),(int(e.x),int(e.y))])
-    xmin,ymin,xmax,ymax = pol.bounds
-    return int(xmin),int(ymin),int(xmax),int(ymax)
-def perpendicular(point1,point2):
-    actual_line = (point1,point2)
-    x_line = ((point1[0]+100,point1[1]),(point1[0]-100,point1[1]))
-    y_line = ((point1[0],point1[1]+100),(point1[0],point1[1]-100))
-    print("*"*50)
-    print(actual_line)
-    print(x_line)
-    print(y_line)
-    print("*"*50)
-    try:
-        ac_slope = slope(actual_line[0],actual_line[1])
-        x_slope = slope(x_line[0],x_line[1])
-        y_slope = slope(y_line[0],y_line[1])
-        x_angle = findAngle(ac_slope,x_slope)
-        y_angle = findAngle(ac_slope,y_slope)
-    except Exception as e:
-        print(e)
-        x_angle=0
-        y_angle=0
-    
-    print("*"*50)
-    print("x:",x_angle)
-    print("y:",y_angle)
-    print("*"*50)
-    ts = str(datetime.now())
-    
-    xmin,ymin,xmax,ymax = getrect(actual_line)
-    crop = frame[ymin:ymax,xmin:xmax]
-    print(crop.shape)
-    try:
-        img = crop/255
-        img = cv2.resize(img, (150, 150))
-        img = img.reshape((1,150,150,3))
-        flag=float(format(classifier.predict(img)[0][0],".5f"))
-    except Exception as e:
-        print(e)
-        flag=0
-    #cv2.imwrite("/media/omkar/omkar3/media_pipe/mediapipe-tracking/crop_image/"+ts+".jpg", crop)
-    cv2.rectangle(frame,(int(xmin),int(ymin)),(int(xmax),int(ymax)), (0, 255, 0), 4)
-    return flag
-
-def draw(img,poses, point_score_threshold,output_transform,skeleton=default_skeleton,draw_ellipses=False):
-    img = output_transform.resize(img)
-    if poses.size == 0:
-        return img
-    stick_width = 4
-
-    img_limbs = np.copy(img)
-    for pose in poses:
-        points = pose[:,:2].astype(np.int32)
-        points = output_transform.scale(points)
-        points_scores = pose[:,2]
-
-        for i,(p,v) in enumerate(zip(points, points_scores)):
-            if v > point_score_threshold:
-               
-                flag_10=perpendicular(points[10],points[8])
-                flag_9=perpendicular(points[9],points[7])
-                if flag_10 < 0.5:
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    cv2.putText(frame, "picked", points[10], font, 1, (255, 255, 255), 1, cv2.LINE_AA)
-                if flag_9 < 0.5:
-                    font = cv2.FONT_HERSHEY_SIMPLEX
-                    cv2.putText(frame, "picked", points[9], font, 1, (255, 255, 255), 1, cv2.LINE_AA)
-        for i, j in skeleton:
-            if points_scores[i] > point_score_threshold and points_scores[j] > point_score_threshold:
-                if draw_ellipses:
-                    middle = (points[i] + points[j]) // 2
-                    vec = points[i] - points[j]
-                    length = np.sqrt((vec * vec).sum())
-                    angle = int(np.arctan2(vec[1], vec[0]) * 180 / np.pi)
-                    polygon = cv2.ellipse2Poly(tuple(middle), (int(length / 2), min(int(length / 50), stick_width)),
-                                               angle, 0, 360, 1)
-                    cv2.fillConvexPoly(img_limbs, polygon, colors[j])
-                else:
-                    cv2.line(img_limbs, tuple(points[i]), tuple(points[j]), color=colors[j], thickness=stick_width)
-    cv2.addWeighted(img, 0.4, img_limbs, 0.6, 0, dst=img)
-    return img
-
-def preprocess(frame,size):
-    n,c,h,w = size
-    input_image = cv2.resize(frame, (w,h))
-    input_image = input_image.transpose((2,0,1))
-    input_image.reshape((n,c,h,w))
-    return input_image
+tracker = CentroidTracker(max_lost=0, tracker_output_format='mot_challenge')
 #------------------------------------tensorflow----------------
-classifier = load_model("transfer_model.h5")
+#model_c = load_model("mymodel_vgg1")
+
+ie= IECore()
+
+net_c = ie.read_network(model="my_16/saved_model.xml",weights="my_16/saved_model.bin")
+input_layer_c = next(iter(net_c.inputs))
+n_c,c_c,h_c,w_c = net_c.inputs[input_layer_c].shape
+size_c = [n_c,c_c,h_c,w_c]
+output_layer_c = next(iter(net_c.outputs))
+exec_net_c = ie.load_network(network=net_c,device_name="CPU",num_requests = 1)
 #--------------------------------------------------------------
 plugin_config = {'CPU_BIND_THREAD': 'NO', 'CPU_THROUGHPUT_STREAMS': 'CPU_THROUGHPUT_AUTO'}
 ie= IECore()
@@ -189,16 +53,29 @@ fps = int(cap.get(cv2.CAP_PROP_FPS))
 fourcc = cv2.VideoWriter_fourcc(*'MP4V')
 output = cv2.VideoWriter('output_class.mp4', fourcc, fps, (1000,1000))
 count=0
+count_=0
 prev_frame_time = 0
 new_frame_time = 0
 font = cv2.FONT_HERSHEY_SIMPLEX
+tracks_id={}
+tracklets_id={}
 while True:
     _,frame = cap.read()
+    ids = {}
+    tracks_draw={}
+    id_={"":""}
     frame = cv2.resize(frame, (1000,1000))
-    #frame1 = frame.copy()
+    frame_dummy = frame
     x_shape, y_shape = frame.shape[1], frame.shape[0]
     frame1 = [frame]
     det = model_yolov5(frame1)
+    bboxes, scores,labels,bboxes_bottel,scores_bottel,labels_bottel=postprocess_yolov5(x_shape, y_shape,det)
+    tracks = tracker.update(bboxes, scores,labels)
+        
+    frame,ids = draw_tracks(frame, tracks,ids)
+       
+    tracks_draw,tracks_id,tracklets_id=tracking(ids,frame,tracks_id,tracklets_id,tracks_draw)
+    
     output_transform = models.OutputTransform(frame.shape[:2], None)
     output_resolution = (frame.shape[1], frame.shape[0])
     inputs, preprocessing_meta = model.preprocess(frame)
@@ -210,14 +87,39 @@ while True:
     results={"heatmaps":results_ht,"pafs":results_paf,"pooled_heatmaps":results_pool}
     poses,scores=model.postprocess(results,preprocessing_meta)
     #points = output_transform.scale(poses)
-    #if count==10:
-    frame = draw(frame,poses,0.1,output_transform)
-    #    count=0
-    #count+=1
+    try:
+        frame,rights,lefts = draw(frame,poses,0.1,output_transform)
+        #flag_right,flag_left = pickup(frame_dummy,rights,lefts.model_c)
+        for right,left in zip(rights,lefts):
+            img_right = frame_dummy[right[1]:right[3],right[0]:right[2]]
+            img_left = frame_dummy[left[1]:left[3],left[0]:left[2]]  
+            print(img_right.shape)
+
+            img_right = preprocess(img_right,size_c)
+            img_left = preprocess(img_left,size_c)
+            flag_right=classifier(img_right,input_layer_c,output_layer_c,exec_net_c)
+            flag_left=classifier(img_left,input_layer_c,output_layer_c,exec_net_c)
+            #img_right = preprocess_tensorflow(img_right)
+            #img_left = preprocess_tensorflow(img_left)
+            #flag_right = classifier_tensorflow(img_right,model_c)
+            #flag_left = classifier_tensorflow(img_left,model_c)
+            print(flag_right)
+            print(flag_left)
+            print(img_left.shape)
+            if flag_right[0][0]<0.5:
+                print("picked_10")
+            if flag_left[0][0]<0.5:
+                print("picked_9")   
+    except Exception as e:
+        print('Error on line {}'.format(sys.exc_info()[-1].tb_lineno), type(e).__name__, e)
+    
     new_frame_time = time.time()
     fps = 1/(new_frame_time-prev_frame_time)
     prev_frame_time = new_frame_time
     fps = int(fps)
+    for id,bbox in tracks_draw.items():
+        cv2.putText(frame, str(id), bbox[:2], 1, cv2.FONT_HERSHEY_DUPLEX, (0, 0, 255), 3)
+        cv2.rectangle(frame, bbox[:2], bbox[2:], (0, 255, 0), 1)
     cv2.putText(frame, "Fps:-"+str(fps), (20, 20), font, 1, (255, 255, 255), 1, cv2.LINE_AA)
     output.write(frame)
     cv2.imshow('smart store', frame)

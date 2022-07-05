@@ -1,31 +1,14 @@
-from cmath import cos
-import logging
-import sys
-from argparse import ArgumentParser, SUPPRESS
-from pathlib import Path
-from time import perf_counter
+
 import cv2
-import mediapipe as mp
 import torch
-import cv2
-import numpy as np
-import argparse
 from motrackers import CentroidTracker
-from reid import ids_feature_,distance_,distance_list,ids_feature_list
-import time
-import cv2
 import numpy as np
 from openvino.inference_engine import IECore
-import torch
-from math import atan
 import openvino_models as models
-import monitors
-from images_capture import open_images_capture
-from pipelines import get_user_config, AsyncPipeline
-from performance_metrics import PerformanceMetrics
-from helpers import resolution
 from urtils import load,id_assign
-from datetime import datetime
+from urtils import postprocess_yolov5,draw_tracks,tracking,check_id,pointInRect
+from motrackers import CentroidTracker
+
 default_skeleton = ((15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
     (5, 7), (6, 8), (7, 9), (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 6))
 
@@ -36,107 +19,22 @@ colors = (
         (0, 255, 170), (0, 0, 255), (0, 255, 255), (85, 0, 255),
         (0, 170, 255))
 
-def findAngle(M1, M2):
-    PI = 3.14159265
-     
-    # Store the tan value  of the angle
-    angle = abs((M2 - M1) / (1 + M1 * M2))
- 
-    # Calculate tan inverse of the angle
-    ret = atan(angle)
- 
-    # Convert the angle from
-    # radian to degree
-    val = (ret * 180) / PI
- 
-    # Print the result
-    return (round(val, 4))
-def slope(point1,point2):
-    x = (point1[0],point2[0])
-    y = (point1[1],point2[1])
-    slope_, intercept = np.polyfit(x,y,1)
-    return slope_
 
-def perpendicular(point1,point2):
-    actual_line = (point1,point2)
-    x_line = ((point1[0]+100,point1[1]),(point1[0]-100,point1[1]))
-    y_line = ((point1[0],point1[1]+100),(point1[0],point1[1]-100))
-    print("*"*50)
-    print(actual_line)
-    print(x_line)
-    print(y_line)
-    print("*"*50)
-    try:
-        ac_slope = slope(actual_line[0],actual_line[1])
-        x_slope = slope(x_line[0],x_line[1])
-        y_slope = slope(y_line[0],y_line[1])
-        x_angle = findAngle(ac_slope,x_slope)
-        y_angle = findAngle(ac_slope,y_slope)
-    except Exception as e:
-        print(e)
-        x_angle=0
-        y_angle=0
+def draw_pose(img,poses, point_score_threshold,output_transform,skeleton=default_skeleton,draw_ellipses=False):
+    """draw_pose is fuction which use for drawing pose on image
+
+    Args:
+        img ([array]): [description]
+        poses ([array]): [description]
+        point_score_threshold ([array]): [description]
+        output_transform ([function]): [description]
+        skeleton ([type], optional): [description]. Defaults to default_skeleton.
+        draw_ellipses (bool, optional): [description]. Defaults to False.
+
+    Returns:
+        img: with draw poses
+    """
     
-    #print("*"*50)
-    #print("x:",x_angle)
-    #print("y:",y_angle)
-    #print("*"*50)
-    ts = str(datetime.now())
-    
-    if x_angle > y_angle:
-        print(actual_line[1][1]-actual_line[0][1])
-        if actual_line[1][1]-actual_line[0][1] > 0:
-            xmin,ymin,xmax,ymax=x_line[1][0], x_line[1][1]-300 ,x_line[0][0], x_line[0][1]
-            crop = frame[ymin:ymax,xmin:xmax]
-            #print(crop.shape)
-            try:
-                cv2.imwrite("/media/omkar/omkar3/media_pipe/mediapipe-tracking/crop_image/"+ts+".jpg", crop)
-            except:
-                pass
-            #cv2.rectangle(frame,(xmin,ymin),(xmax,ymax), (0, 255, 0), 4)
-        else:
-            xmin,ymin,xmax,ymax=x_line[1][0], x_line[1][1],x_line[0][0], x_line[0][1]+300
-            crop = frame[ymin:ymax,xmin:xmax]
-            #print(crop.shape)
-            try:
-                cv2.imwrite("/media/omkar/omkar3/media_pipe/mediapipe-tracking/crop_image/"+ts+".jpg", crop)
-            except:
-                pass
-            #cv2.rectangle(frame,(xmin,ymin),(xmax,ymax), (0, 255, 0), 4)
-        #cv2.line(frame, x_line[0], x_line[1], (255,0,0), 2)
-    elif x_angle < y_angle:
-        print(actual_line[1][0]-actual_line[0][0])
-        if actual_line[1][0]-actual_line[0][0] < 0:
-            h = y_line[0][1]-y_line[1][1]
-            x_2_,y_2_ = y_line[0][0]+300,y_line[0][1]
-            xmin,ymin,xmax,ymax=y_line[1][0],y_line[1][1], x_2_,y_2_
-            crop = frame[ymin:ymax,xmin:xmax]
-            #print(crop.shape)
-            #print("he")
-            try:
-                cv2.imwrite("/media/omkar/omkar3/media_pipe/mediapipe-tracking/crop_image/"+ts+".jpg", crop)
-            except:
-                pass
-            #cv2.rectangle(frame, (xmin,ymin),(xmax,ymax), (0, 255, 0), 4)
-        elif actual_line[1][0]-actual_line[0][0] > 0:
-            h = y_line[0][1]-y_line[1][1]
-            x_2,y_2 = y_line[1][0]-300,y_line[1][1]
-
-            xmin,ymin,xmax,ymax=y_line[0][0],y_line[0][1], x_2,y_2
-            crop = frame[ymin:ymax,xmin:xmax]
-            #print(crop.shape)
-            #print(xmin,ymin,xmax,ymax)
-            try:
-                cv2.imwrite("/media/omkar/omkar3/media_pipe/mediapipe-tracking/crop_image/"+ts+".jpg", crop)
-            except:
-                pass
-           
-            #cv2.rectangle(frame, (xmin,ymin),(xmax,ymax), (0, 255, 0), 4)
-        
-        #cv2.circle(frame,y_line[1],10,(0,0,0),5)
-        #cv2.line(frame, y_line[0], y_line[1], (255,0,0), 2)
-
-def draw(img,poses, point_score_threshold,output_transform,skeleton=default_skeleton,draw_ellipses=False):
     img = output_transform.resize(img)
     if poses.size == 0:
         return img
@@ -151,13 +49,7 @@ def draw(img,poses, point_score_threshold,output_transform,skeleton=default_skel
         for i,(p,v) in enumerate(zip(points, points_scores)):
             if v > point_score_threshold:
                 pass
-                #print("*"*50)
-                #print(points)
-                #print(points[8])
-                #print("*"*50)
-                #perpendicular(points[10],points[8])
-                #perpendicular(points[9],points[7])
-        
+        cv2.circle(frame,points[4],10,(0,0,0),-1)    
         for i, j in skeleton:
             if points_scores[i] > point_score_threshold and points_scores[j] > point_score_threshold:
                 if draw_ellipses:
@@ -173,13 +65,11 @@ def draw(img,poses, point_score_threshold,output_transform,skeleton=default_skel
     cv2.addWeighted(img, 0.4, img_limbs, 0.6, 0, dst=img)
     return img
 
-def preprocess(frame,size):
-    n,c,h,w = size
-    input_image = cv2.resize(frame, (w,h))
-    input_image = input_image.transpose((2,0,1))
-    input_image.reshape((n,c,h,w))
-    return input_image
+#---------------------------tracking---------------------------------------
+tracker = CentroidTracker(max_lost=0, tracker_output_format='mot_challenge')
+#--------------------------------------------------------------------------
 
+#----------------------------pose------------------------------------------
 plugin_config = {'CPU_BIND_THREAD': 'NO', 'CPU_THROUGHPUT_STREAMS': 'CPU_THROUGHPUT_AUTO'}
 ie= IECore()
 model = models.OpenPose(ie, "human-pose-estimation-0001/FP32/human-pose-estimation-0001.xml", target_size=None, aspect_ratio=1,
@@ -190,13 +80,14 @@ out_ht=model.heatmaps_blob_name
 out_paf=model.pafs_blob_name
 n,c,h,w = model.net.inputs[input].shape
 exec_net = ie.load_network(network=model.net,config=plugin_config,device_name="CPU",num_requests = 1)
+#---------------------------------------------------------------------------------------------------
 #--------------------------------------------yolov5--------------------------------------------
 model_yolov5 = torch.hub.load('ultralytics/yolov5', 'yolov5m', pretrained=True)
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 classes = model_yolov5.names
 model_yolov5.to(device)    
 #-----------------------------------------end--------------------------------------------------
-cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture("http://192.168.0.104:8080/video")
 frame_width = int(cap.get(3))
 frame_height = int(cap.get(4))
 frame_size = (frame_width,frame_height)
@@ -204,13 +95,27 @@ fps = int(cap.get(cv2.CAP_PROP_FPS))
 fourcc = cv2.VideoWriter_fourcc(*'MP4V')
 output = cv2.VideoWriter('output9.mp4', fourcc, fps, (1000,1000))
 count=0
+tracks_id={}
+tracklets_id={}
 while True:
     _,frame = cap.read()
+    ids = {}
+    tracks_draw={}
+    id_={"":""}
     frame = cv2.resize(frame, (1000,1000))
-    #frame1 = frame.copy()
+    
     x_shape, y_shape = frame.shape[1], frame.shape[0]
     frame1 = [frame]
     det = model_yolov5(frame1)
+    #--------------------------------------tracking--------------------------------------------------------
+    bboxes, scores,labels,bboxes_bottel,scores_bottel,labels_bottel=postprocess_yolov5(x_shape, y_shape,det)
+    tracks = tracker.update(bboxes, scores,labels)
+        
+    frame,ids = draw_tracks(frame, tracks,ids)
+       
+    tracks_draw,tracks_id,tracklets_id=tracking(ids,frame,tracks_id,tracklets_id,tracks_draw)
+    #-------------------------------------------------------------------------------------------------------
+    #------------------------------------pose---------------------------------------------------------------
     output_transform = models.OutputTransform(frame.shape[:2], None)
     output_resolution = (frame.shape[1], frame.shape[0])
     inputs, preprocessing_meta = model.preprocess(frame)
@@ -221,17 +126,16 @@ while True:
     results_paf = exec_net.requests[0].outputs[out_paf]
     results={"heatmaps":results_ht,"pafs":results_paf,"pooled_heatmaps":results_pool}
     poses,scores=model.postprocess(results,preprocessing_meta)
-    #points = output_transform.scale(poses)
-    #if count==10:
-    frame = draw(frame,poses,0.1,output_transform)
-        #count=0
-    #count+=1
+    
+    frame = draw_pose(frame,poses,0.1,output_transform)
+    #-------------------------------------------------------------------------------------------------------
+    #-----------------------------------bottle------------------------------------------------------------
     labels, cord = det.xyxyn[0][:, -1], det.xyxyn[0][:, :-1]
     
     X = int(x_shape * (20/100))
     start_point = (X,0)
     end_point = (X,y_shape)
-    id={}
+    id_bottle={}
     bottle_number=0
     for i in range(len(cord)):
         bbox=cord[i]
@@ -242,20 +146,45 @@ while True:
             center_right = (int((x2_+x2_)/2),int((y2_+y1_)/2))
             bgr = (0, 255, 0)
             #if x1_>=X:
-            id=id_assign(center_right,poses,output_transform,id,bottle_number)
+            id_bottle=id_assign(center_right,poses,output_transform,id_bottle,bottle_number)
             cv2.circle(frame,center_right,5,(0,0,0),-1)
             cv2.rectangle(frame, (x1_, y1_), (x2_, y2_), bgr, 2)
             bottle_number+=1
     bottle_number=0
-    for i in id.keys():
-        pose = poses[i]
+    #---------------------------------------------------------------------------------------------------------------
+    #print(id_bottle)
+    #-------------------------------------------------draw---------------------------------------------------------
+    pickup_draw={}
+    for i in id_bottle.keys():
+        pose = poses[int(i[0])]
         points = pose[:,:2].astype(np.int32)
         points = output_transform.scale(points)
         point_0 = points[0]
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(frame, "picked", point_0, font, 1, (255, 255, 255), 1, cv2.LINE_AA)
+   
+        for id,bbox in tracks_draw.items():
+            flag = pointInRect(point_0,bbox)
+            if flag==1:
+                pickup_draw[str(id)+i[-1]]=flag
+    #print(pickup_draw)
+    for id,bbox in tracks_draw.items():
+        cv2.putText(frame, str(id), bbox[:2], 1, cv2.FONT_HERSHEY_DUPLEX, (0, 0, 255), 3)
+        cv2.rectangle(frame, bbox[:2], bbox[2:], (0, 255, 0), 1)
+
+    pick_total={}
+    for pick,flag in pickup_draw.items():
+        if pick[0] not in pick_total:
+            pick_total[pick[0]]=flag
+        else:
+            pick_total[pick[0]]=flag+ pick_total[pick[0]]
+    print(pick_total)
+    y=20
+    for person,number in pick_total.items():
+        color = colors[int(person)]
+        cv2.putText(frame, "person number"+person+" : "+"pick up "+str(number)+" bottle", (20,y), 1, cv2.FONT_HERSHEY_DUPLEX, color, 3)
+        y+=30
+        
+    #---------------------------------------------------------------------------------------------------------------
     output.write(frame)
-    #cv2.line(frame, start_point, end_point, (255,0,0), 2)
     cv2.imshow('smart store', frame)
     
     if cv2.waitKey(10) & 0xFF==ord('q'):
