@@ -18,16 +18,16 @@ from motrackers import CentroidTracker
 
 tracker = CentroidTracker(max_lost=0, tracker_output_format='mot_challenge')
 #------------------------------------tensorflow----------------
-#model_c = load_model("mymodel_vgg1")
+model_c = load_model("mymodel_vgg1")
 
-ie= IECore()
+#ie= IECore()
 
-net_c = ie.read_network(model="my_16/saved_model.xml",weights="my_16/saved_model.bin")
-input_layer_c = next(iter(net_c.inputs))
-n_c,c_c,h_c,w_c = net_c.inputs[input_layer_c].shape
-size_c = [n_c,c_c,h_c,w_c]
-output_layer_c = next(iter(net_c.outputs))
-exec_net_c = ie.load_network(network=net_c,device_name="CPU",num_requests = 1)
+#net_c = ie.read_network(model="my_16/saved_model.xml",weights="my_16/saved_model.bin")
+#input_layer_c = next(iter(net_c.inputs))
+#n_c,c_c,h_c,w_c = net_c.inputs[input_layer_c].shape
+#size_c = [n_c,c_c,h_c,w_c]
+#output_layer_c = next(iter(net_c.outputs))
+#exec_net_c = ie.load_network(network=net_c,device_name="CPU",num_requests = 1)
 #--------------------------------------------------------------
 plugin_config = {'CPU_BIND_THREAD': 'NO', 'CPU_THROUGHPUT_STREAMS': 'CPU_THROUGHPUT_AUTO'}
 ie= IECore()
@@ -40,8 +40,8 @@ out_paf=model.pafs_blob_name
 n,c,h,w = model.net.inputs[input].shape
 exec_net = ie.load_network(network=model.net,config=plugin_config,device_name="CPU",num_requests = 1)
 #--------------------------------------------yolov5--------------------------------------------
-model_yolov5 = torch.hub.load('ultralytics/yolov5', 'yolov5m', pretrained=True)
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+model_yolov5 = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
+device = 'cpu'
 classes = model_yolov5.names
 model_yolov5.to(device)    
 #-----------------------------------------end--------------------------------------------------
@@ -95,14 +95,14 @@ while True:
             img_left = frame_dummy[left[1]:left[3],left[0]:left[2]]  
             print(img_right.shape)
 
-            img_right = preprocess(img_right,size_c)
-            img_left = preprocess(img_left,size_c)
-            flag_right=classifier(img_right,input_layer_c,output_layer_c,exec_net_c)
-            flag_left=classifier(img_left,input_layer_c,output_layer_c,exec_net_c)
-            #img_right = preprocess_tensorflow(img_right)
-            #img_left = preprocess_tensorflow(img_left)
-            #flag_right = classifier_tensorflow(img_right,model_c)
-            #flag_left = classifier_tensorflow(img_left,model_c)
+            #img_right = preprocess(img_right,size_c)
+            #img_left = preprocess(img_left,size_c)
+            #flag_right=classifier(img_right,input_layer_c,output_layer_c,exec_net_c)
+            #flag_left=classifier(img_left,input_layer_c,output_layer_c,exec_net_c)
+            img_right = preprocess_tensorflow(img_right)
+            img_left = preprocess_tensorflow(img_left)
+            flag_right = classifier_tensorflow(img_right,model_c)
+            flag_left = classifier_tensorflow(img_left,model_c)
             print(flag_right)
             print(flag_left)
             print(img_left.shape)

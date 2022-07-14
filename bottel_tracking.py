@@ -34,7 +34,8 @@ direction = ''
 bottel_id={}
 tracks_id={}
 tracklets_id={}
-pickup_count=0
+pickup_count={}
+pic=0
 while True:
     ids_bottel = {}
     
@@ -112,11 +113,13 @@ while True:
         if dic[-1][0] > X and dic[-1][0] < X_60:
             print(dic)
             if  dic[0] == "East":
-                pickup_count+=1
-            elif dic[0] == "West" and pickup_count > 0:
-                pickup_count -= 1
+                pickup_count[id] = [True,dic[-1]]
+                pic+=1
+            elif dic[0] == "West":
+                pickup_count[id] = [False,dic[-1]]
+                pic=-1
     print(pickup_count)
-                
+    
 
 
     for id,bbox in tracks_draw.items():

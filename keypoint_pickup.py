@@ -6,9 +6,10 @@ import numpy as np
 from openvino.inference_engine import IECore
 import openvino_models as models
 from urtils import load,id_assign
-from urtils import postprocess_yolov5,draw_tracks,tracking,check_id,pointInRect
+from urtils import postprocess_yolov5,draw_tracks,tracking,check_id,pointInRect,check_person,many_bottel_pickup
 from motrackers import CentroidTracker
-
+import json
+import requests
 default_skeleton = ((15, 13), (13, 11), (16, 14), (14, 12), (11, 12), (5, 11), (6, 12), (5, 6),
     (5, 7), (6, 8), (7, 9), (8, 10), (1, 2), (0, 1), (0, 2), (1, 3), (2, 4), (3, 5), (4, 6))
 
@@ -87,21 +88,20 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 classes = model_yolov5.names
 model_yolov5.to(device)    
 #-----------------------------------------end--------------------------------------------------
-cap = cv2.VideoCapture("http://192.168.0.104:8080/video")
+cap = cv2.VideoCapture(2)
 frame_width = int(cap.get(3))
 frame_height = int(cap.get(4))
 frame_size = (frame_width,frame_height)
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 fourcc = cv2.VideoWriter_fourcc(*'MP4V')
 output = cv2.VideoWriter('output9.mp4', fourcc, fps, (1000,1000))
-count=0
 tracks_id={}
 tracklets_id={}
+font = cv2.FONT_HERSHEY_SIMPLEX
 while True:
     _,frame = cap.read()
     ids = {}
     tracks_draw={}
-    id_={"":""}
     frame = cv2.resize(frame, (1000,1000))
     
     x_shape, y_shape = frame.shape[1], frame.shape[0]
@@ -152,38 +152,35 @@ while True:
             bottle_number+=1
     bottle_number=0
     #---------------------------------------------------------------------------------------------------------------
-    #print(id_bottle)
-    #-------------------------------------------------draw---------------------------------------------------------
-    pickup_draw={}
-    for i in id_bottle.keys():
-        pose = poses[int(i[0])]
-        points = pose[:,:2].astype(np.int32)
-        points = output_transform.scale(points)
-        point_0 = points[0]
    
-        for id,bbox in tracks_draw.items():
-            flag = pointInRect(point_0,bbox)
-            if flag==1:
-                pickup_draw[str(id)+i[-1]]=flag
-    #print(pickup_draw)
+    
+    pickup_draw={}
+    pickup_draw = check_person(pickup_draw,id_bottle,poses,output_transform,tracks_draw)
+    
+    
+
+    pick_total={}
+    pick_total = many_bottel_pickup(pick_total,pickup_draw)
+    print(pickup_draw)
+    print(pick_total)
+    #-------------------------------------------------draw---------------------------------------------------------
     for id,bbox in tracks_draw.items():
         cv2.putText(frame, str(id), bbox[:2], 1, cv2.FONT_HERSHEY_DUPLEX, (0, 0, 255), 3)
         cv2.rectangle(frame, bbox[:2], bbox[2:], (0, 255, 0), 1)
-
-    pick_total={}
-    for pick,flag in pickup_draw.items():
-        if pick[0] not in pick_total:
-            pick_total[pick[0]]=flag
-        else:
-            pick_total[pick[0]]=flag+ pick_total[pick[0]]
-    print(pick_total)
+    
     y=20
     for person,number in pick_total.items():
-        color = colors[int(person)]
-        cv2.putText(frame, "person number"+person+" : "+"pick up "+str(number)+" bottle", (20,y), 1, cv2.FONT_HERSHEY_DUPLEX, color, 3)
+        
+        cv2.putText(frame, "person number"+person+" : "+"pick up "+str(number)+" bottle", (20,y), font, 1, (255, 255, 255), 1, cv2.LINE_AA)
         y+=30
         
-    #---------------------------------------------------------------------------------------------------------------
+    #----------------------------------------------------------------------------------------------------------------
+    #-----------------------------------------data send-------------------------------------------------------------
+    if pick_total == {}:
+        pick_total={"":""}
+    #s = json.dumps(pick_total)
+    #requests.post("http://localhost:8080/data", json=s).json()
+
     output.write(frame)
     cv2.imshow('smart store', frame)
     
@@ -192,3 +189,4 @@ while True:
 cap.release()
 output.release()
 cv2.destroyAllWindows()
+

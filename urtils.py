@@ -346,3 +346,24 @@ def id_assign(center_right,poses,output_transform,id,bottle_number):
         if dis[min_key] < 150:
             id[str(i)+str(bottle_number)]="pick"+str(bottle_number)
     return id
+
+def check_person(pickup_draw,id_bottle,poses,output_transform,tracks_draw):
+    for i in id_bottle.keys():
+        pose = poses[int(i[0])]
+        points = pose[:,:2].astype(np.int32)
+        points = output_transform.scale(points)
+        point_0 = points[0]
+   
+        for id,bbox in tracks_draw.items():
+            flag = pointInRect(point_0,bbox)
+            if flag==1:
+                pickup_draw[str(id)+i[-1]]=flag
+    return pickup_draw
+
+def many_bottel_pickup(pick_total,pickup_draw):
+    for pick,flag in pickup_draw.items():
+        if pick[:-1] not in pick_total:
+            pick_total[pick[:-1]]=flag
+        else:
+            pick_total[pick[:-1]]=flag+ pick_total[pick[:-1]]
+    return pick_total
